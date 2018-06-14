@@ -2,40 +2,53 @@
 
 const cron = require('node-cron')
 const moment = require('moment')
-const server = require('http').Server()
 const setup = require('./setup')
-const Engine = require('./pollELS')
+const PollingEngine = require('./engine')
+const mkdirp = require('mkdirp')
+const express = require('express')
+require('express-async-errors')
+const exp = express()
+const fs = require('fs')
+const { getSchema, jsonLoad } = require('./GCS-To-Big-Query/index')
 
 // Firewall events monitoring engine
-const monitor = (options) => {
-  let engine = new Engine(options)
-  engine.start().then(eng => {
-    console.log(`\nStarted monitoring Firewall activity on ${eng.zones.length} zones.`)
-    console.log(`\n${moment()}\n---------------------------------`)
-    eng.pollEvents()
-    cron.schedule(`* 6 * * *`, () => {
-      console.log(`\nReset assets at ${moment()}\n---------------------------------`)
-      return eng.reset()
-    })
-  }).catch(e => {
-    console.log(e, `: Reinitializing`)
-    initialize()
+const monitor = (setup, zones, schema) => {
+  let engine = new PollingEngine(setup, zones, schema)
+  console.log(`\nStarted monitoring Firewall activity on ${engine.zones.length} zones.`)
+  console.log(`\n${moment()}\n---------------------------------`)
+  engine.pollEvents()
+  cron.schedule(`* 6 * * *`, () => {
+    console.log(`\nReset assets at ${moment()}\n---------------------------------`)
+    return engine.reset()
   })
 }
 
 // Verify Cloudflare organization ID and start monitor
-const initialize = () => {
-  setup.start().then(() => {
-    console.log(`Setup initalized`)
-    return monitor(setup)
-  }).catch(e => {
-    console.log(e, `: Reinitializing`)
-    initialize()
+async function initialize () {
+  let schema = []
+  let zones = []
+  Promise.resolve(getSchema()).then(sch => {
+    sch.map(obj => { schema.push(obj.name) })
+  }).then(() => {
+    mkdirp('./tmp')
+    setup.cf.apiCall('zones').then(json => {
+      for (let i = 0; i < json.result.length; i++) {
+        zones.push(json.result[i].id)
+        if (i >= json.result.length - 1) {
+          return monitor(setup, zones, schema)
+        }
+      }
+    })
   })
 }
 
-initialize()
+exports.pollELS = async (req, res) => {
+  const poll = await initialize()
+  return res.send(poll).end()
+}
 
-// Server
-server.listen(process.env.PORT || 3000)
+exports.jsonLoad = jsonLoad
+
+// exports.pollELS
+exp.listen(process.env.PORT || 3000)
 console.log('\nϟϟϟ Cloudflare server initialized ϟϟϟ\n')

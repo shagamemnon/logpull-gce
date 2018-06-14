@@ -9,27 +9,34 @@
     "start": "node index.js"
   },
   "engines": {
-    "node": "8.9.0"
+    "node": ">=4.3.2"
   },
   "author": "Frank Taylor",
   "license": "ISC",
   "dependencies": {
-    "@google-cloud/storage": "^1.7.0",
-    "argv": "0.0.2",
-    "dotenv": "^5.0.1",
+    "@google-cloud/storage": "1.2.1",
+    "@google-cloud/bigquery": "0.9.6",
+    "google-auth-library": "^1.4.0",
     "end-of-stream": "^1.4.1",
+    "express": "^4.16.3",
+    "express-async-errors": "^3.0.0",
     "fs-ndjson": "^1.1.0",
-    "google-gax": "^0.16.1",
     "googleapis": "^28.1.0",
-    "lodash.merge": "^4.6.1",
     "moment": "^2.22.1",
     "node-cron": "^1.2.1",
-    "node-fetch": "^2.1.1",
     "opn": "^5.3.0",
-    "request": "^2.86.0"
+    "request": "^2.86.0",
+    "request-promise-native": "^1.0.5"
   },
   "devDependencies": {
-    "google-auth-library": "^1.4.0",
-    "standard": "^11.0.1"
+    "standard": "^11.0.1",
+    "@google-cloud/nodejs-repo-tools": "1.4.16",
+    "ava": "0.21.0",
+    "proxyquire": "1.8.0",
+    "sinon": "3.0.0"
+  },
+  "cloud-repo-tools": {
+    "requiresKeyFile": true,
+    "requiresProjectId": true
   }
 }
