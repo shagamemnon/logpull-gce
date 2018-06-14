@@ -1,0 +1,35 @@
+{
+  "name": "cloudflare-scc",
+  "version": "1.0.0",
+  "description": "Monitor Cloudflare security logs on Google Security Command Center",
+  "main": "index.js",
+  "repository": "https://github.com/shagamemnon/cloudflare-scc",
+  "private": true,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": "8.9.0"
+  },
+  "author": "Frank Taylor",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/storage": "^1.7.0",
+    "argv": "0.0.2",
+    "dotenv": "^5.0.1",
+    "end-of-stream": "^1.4.1",
+    "fs-ndjson": "^1.1.0",
+    "google-gax": "^0.16.1",
+    "googleapis": "^28.1.0",
+    "lodash.merge": "^4.6.1",
+    "moment": "^2.22.1",
+    "node-cron": "^1.2.1",
+    "node-fetch": "^2.1.1",
+    "opn": "^5.3.0",
+    "request": "^2.86.0"
+  },
+  "devDependencies": {
+    "google-auth-library": "^1.4.0",
+    "standard": "^11.0.1"
+  }
+}
