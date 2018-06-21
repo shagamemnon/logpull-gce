@@ -6,7 +6,8 @@
   "repository": "https://github.com/shagamemnon/cloudflare-scc",
   "private": true,
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon ./index.js localhost 3000"
   },
   "engines": {
     "node": ">=4.3.2"
@@ -14,13 +15,13 @@
   "author": "Frank Taylor",
   "license": "ISC",
   "dependencies": {
-    "@google-cloud/storage": "1.2.1",
     "@google-cloud/bigquery": "0.9.6",
-    "google-auth-library": "^1.4.0",
-    "end-of-stream": "^1.4.1",
+    "@google-cloud/storage": "1.2.1",
+    "dotenv": "^6.0.0",
     "express": "^4.16.3",
     "express-async-errors": "^3.0.0",
     "fs-ndjson": "^1.1.0",
+    "google-auth-library": "^1.4.0",
     "googleapis": "^28.1.0",
     "moment": "^2.22.1",
     "node-cron": "^1.2.1",

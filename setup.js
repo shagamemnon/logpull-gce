@@ -4,6 +4,8 @@ const request = require('request-promise-native')
 
 let setup = {
   bucket: process.env.BUCKET,
+  logpullStart: process.env.START_TIME || 6,
+  logpullEnd: process.env.END_TIME || 5,
   cf: {
     email: process.env.EMAIL,
     apiKey: process.env.API_KEY,

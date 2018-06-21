@@ -1,14 +1,13 @@
 'use strict'
 
+require('dotenv').config()
 const cron = require('node-cron')
 const moment = require('moment')
 const setup = require('./setup')
 const PollingEngine = require('./engine')
-const mkdirp = require('mkdirp')
 const express = require('express')
 require('express-async-errors')
 const exp = express()
-const fs = require('fs')
 const { getSchema, jsonLoad } = require('./GCS-To-Big-Query/index')
 
 // Firewall events monitoring engine
@@ -30,7 +29,6 @@ async function initialize () {
   Promise.resolve(getSchema()).then(sch => {
     sch.map(obj => { schema.push(obj.name) })
   }).then(() => {
-    mkdirp('./tmp')
     setup.cf.apiCall('zones').then(json => {
       for (let i = 0; i < json.result.length; i++) {
         zones.push(json.result[i].id)
@@ -41,6 +39,8 @@ async function initialize () {
     })
   })
 }
+
+initialize()
 
 exports.pollELS = async (req, res) => {
   const poll = await initialize()
