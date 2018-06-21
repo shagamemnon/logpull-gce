@@ -1,5 +1,6 @@
 ### Install
 `npm install`
+`gcloud app deploy`
 
 ### Run
 ```bash
