@@ -1,19 +1,48 @@
 const gulp = require('gulp')
-const { exec } = require('child_process')
 const run = require('gulp-run')
-const sequence = require('run-sequence')
 const inquirer = require('inquirer')
-const fs = require('fs')
-const config = require('./config.json')
 const opn = require('opn')
 const { auth } = require('google-auth-library')
-const writeJson = require('write')
-var gutil = require('gulp-util')
-const request = require('request')
+const writeFile = require('write')
+const fetch = require('node-fetch')
+const touch = require('touch')
+const { getSchema } = require('./GCS-To-Big-Query/index')
 
-// var prompts = new Rx.Subject()
-// use gulp-run to start a pipeline
-// cd ~/scc-cloudflare &&
+let hdrs = {
+  'X-Auth-Key': '',
+  'X-Auth-Email': '',
+  'Content-Type': 'application/json'
+}
+
+const uniqueBucketName = (unique) => {
+  var coeff = 1000 * 60 * 5
+  var date = new Date()
+  unique = new Date(Math.round(date.getTime() / coeff) * coeff)
+  return unique
+}
+
+console.log(uniqueBucketName())
+
+let config = {
+  LOGPULL_START_TIME: 6,
+  LOGPULL_END_TIME: 5,
+  BUCKET_NAME: `${'cloudflare-els-storage'}${Date.now()}`,
+  FUNCTION_NAME: 'cloudflare-els-gcs',
+  FUNCTION_BUCKET_NAME: 'cloudflare-els-cloud-functions',
+  GCLOUD_PROJECT_ID: '',
+  ZONE_NAMES: [],
+  ZONES: [],
+  FIELDS: ''
+}
+
+const createFile = (filename, obj) => {
+  touch(filename, {}, () => {
+    writeFile(filename, JSON.stringify(obj, null, 2), (err) => {
+      if (err) console.log(err)
+    })
+  })
+}
+
 const client = auth.getClient({
   scopes: 'https://www.googleapis.com/auth/cloud-platform'
 })
@@ -21,41 +50,43 @@ const client = auth.getClient({
 const ui = new inquirer.ui.BottomBar()
 
 const createConfigJSON = () => {
-  let credentials
-
   var billingPrompt = {
     type: 'list',
     name: 'billing',
+    prefix: '\n',
     message: 'Is billing enabled for this project?',
-    choices: ['Yes', 'No']
+    choices: ['Yes', 'No'],
+    default: 'No'
   }
 
   const billingEnabled = {
     type: 'list',
     name: 'apiKeyPrePrompt',
-    prefix: '',
+    prefix: '\n',
     message: `Next, you'll need your Cloudflare API key.`,
-    choices: ['Get my API key from dash.cloudflare.com', 'I have my API key accessible']
+    choices: ['Retrieve API key from dash.cloudflare.com', new inquirer.Separator(), 'I have my API key accessible'],
+    default: 'Retrieve API key from dash.cloudflare.com'
   }
 
   const cloudflareApiKeyPrompt = {
     type: 'input',
     name: 'cfApiKey',
-    message: '\nEnter your Cloudflare API key:'
+    prefix: '\n',
+    message: 'Enter your Cloudflare API key:'
   }
 
   const cloudflareEmailPrompt = {
     type: 'input',
     name: 'cfEmail',
-    prefix: '',
+    prefix: '\n',
     message: 'Enter your Cloudflare account email:'
   }
 
   const cloudflareZonesPrompt = {
     type: 'input',
     name: 'cfZones',
-    prefix: '>',
-    message: `\nEnter each top-level domain you'd like to monitor logs for:`
+    prefix: '\n',
+    message: `Enter each top-level domain you'd like to monitor logs for:`
   }
 
   let projectId
@@ -78,103 +109,87 @@ const createConfigJSON = () => {
     if (status === 'incomplete') opn(`https://console.developers.google.com/project/${projectId}/settings`)
     setTimeout(function () {
       return inquirer.prompt(billingEnabled).then(answers => {
-        answers.apiKeyPrePrompt === 'Get my API key from dash.cloudflare.com' ? addCloudflareCredentials('redirect')
-          : addCloudflareCredentials()
+        answers.apiKeyPrePrompt === 'Get my API key from dash.cloudflare.com' ? addCloudflareConfig('redirect')
+          : addCloudflareConfig()
       })
     }, 1000)
   }
 
-  function addCloudflareCredentials (routeTo) {
+  function addCloudflareConfig (routeTo) {
     if (routeTo === 'redirect') {
       console.log('Opening Cloudflare dashboard ...')
       opn(`https://dash.cloudflare.com/profile`)
     }
     setTimeout(function () {
       return inquirer.prompt([cloudflareApiKeyPrompt, cloudflareEmailPrompt]).then(answers => {
-        credentials = {
-          API_KEY: `${answers['cfApiKey']}`,
-          EMAIL: `${answers['cfEmail']}`,
-          LOGPULL_START_TIME: 6,
-          LOGPULL_END_TIME: 5,
-          BUCKET_NAME: 'cloudflare-els-storage',
-          FUNCTION_NAME: 'cloudflare-els-gcs',
-          FUNCTION_BUCKET_NAME: 'cloudflare-els-cloud-functions',
-          GCLOUD_PROJECT_ID: projectId,
-          ZONE_NAMES: [],
-          ZONES: [],
-          SCHEMA: []
-        }
-        return createCredentialsFile(credentials)
+        hdrs['X-Auth-Key'] = `${answers['cfApiKey']}`
+        hdrs['X-Auth-Email'] = `${answers['cfEmail']}`
+        config.GCLOUD_PROJECT_ID = projectId
+        return createConfigFile()
       })
     }, 1000)
   }
 
-  let configureZones = {
-    _zones: [],
-    _zoneNames: [],
-    setZones (hdrs) {
-      request({
-        uri: `https://api.cloudflare.com/client/v4/zones`,
-        headers: hdrs,
-        json: true
+  async function setZones () {
+    console.log(hdrs)
+    return fetch('https://api.cloudflare.com/client/v4/zones', { headers: hdrs })
+      .then(res => {
+        return res.json()
       }).then(json => {
+        console.log(json.result)
         for (let i = 0; i < json.result.length; i++) {
-          this._zones.push(json.result[i].id)
-          this._zoneNames.push(json.result[i].name)
-          console.log(this._zones, this._zoneNames)
-          if (i >= json.result.length) {
-            return [this._zones, this._zoneNames]
+          config.ZONES.push(json.result[i].id)
+          config.ZONE_NAMES.push(json.result[i].name)
+          if (i >= json.result.length - 1) {
+            console.log(i)
+            return config
           }
         }
-      }).then(vals => {
-        return Promise.resolve([this._zones, this._zoneNames])
       })
-    }
   }
 
-  function createCredentialsFile (credentials) {
+  async function getFields () {
+    return getSchema()
+      .then(sch => {
+        return sch.map(obj => {
+          if (!obj.name.includes('undefined')) config.FIELDS += `${obj.name},`
+        })
+      }).then(fields => {
+        return config
+      })
+  }
+
+  async function createConfigFile () {
     try {
-      const schema = require('./setup')
-      console.log(credentials)
-      const hdrs = {
-        'X-Auth-Key': credentials.API_KEY,
-        'X-Auth-Email': credentials.EMAIL
-        // 'Content-Type': 'application/json'
-      }
-      console.log(hdrs)
-      return configureZones.setZones(hdrs).then(async zoneConfig => {
-        credentials.ZONES = zoneConfig[0]
-        credentials.ZONE_NAMES = zoneConfig[1]
-        credentials.SCHEMA = await schema
-        return credentials
-      }).then(credentials => {
-        return writeJson.sync('config.json', credentials)
+      setZones().then(function () {
+        console.log(config)
+        createFile('credentials.json', hdrs)
+        return getFields()
+      }).then(function () {
+        createFile('config.json', config)
       })
     } catch (e) {
       if (e) {
-        console.log('Cloudflare credentials invalid.')
-        addCloudflareCredentials()
+        console.log('Cloudflare config invalid.')
+        addCloudflareConfig()
       }
     }
   }
   main()
 }
 
-gulp.task('configureCredentials', function (cb) {
+gulp.task('configure', function (cb) {
   createConfigJSON()
   cb()
 })
 
-gulp.task('createBuckets', function (cb) {
-  var cmd = new run.Command(`gsutil mb gs://${credentials.BUCKET_NAME} && gsutil defacl set public-read gs://${credentials.BUCKET_NAME}`)
-  console.log('Creating storage buckets')
-  cmd.exec()
-  cb()
-})
-
 gulp.task('deploy', function (cb) {
-  var cmd = new run.Command(`gcloud beta functions deploy ${credentials.FUNCTION_NAME} --source=. --stage-bucket=${credentials.FUNCTION_BUCKET_NAME} --trigger-resource-${credentials.BUCKET_NAME} --trigger-event google.storage.object.finalize --entry-point=index`)
-  cmd.exec()
+  var makeBucket = new run.Command(`gsutil mb gs://${config.BUCKET_NAME}`)
+  var cmd = new run.Command(`gcloud beta functions deploy ${config.FUNCTION_NAME} --source=. --stage-bucket=${config.FUNCTION_BUCKET_NAME} --trigger-http --entry-point=index`)
+  makeBucket.exec()
+  setTimeout(function () {
+    cmd.exec()
+  }, 5000)
   cb()
 })
 

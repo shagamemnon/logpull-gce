@@ -8,7 +8,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon ./index.js localhost 3000",
-    "flare": "gulp configureCredentials --silent"
+    "flare": "gulp createBuckets && gulp configure --silent",
+    "enableapis": "gcloud services enable cloudfunctions.googleapis.com",
+    "deploy": "gulp deploy"
   },
   "engines": {
     "node": ">=4.3.2"
@@ -18,28 +20,24 @@
   "dependencies": {
     "@google-cloud/bigquery": "0.9.6",
     "@google-cloud/storage": "1.2.1",
-    "dotenv": "^6.0.0",
     "express": "^4.16.3",
     "express-async-errors": "^3.0.0",
-    "fs-ndjson": "^1.1.0",
     "google-auth-library": "^1.6.1",
     "googleapis": "^28.1.0",
-    "got": "^8.3.1",
     "gulp": "^3.9.1",
     "gulp-run": "^1.7.1",
     "gulp-sequence": "^1.0.0",
     "gulp-util": "^3.0.8",
     "inquirer": "^6.0.0",
+    "jsonfile": "^4.0.0",
     "moment": "^2.22.1",
-    "neo-async": "^2.5.1",
-    "node-cron": "^1.2.1",
+    "node-fetch": "^2.1.2",
     "opn": "^5.3.0",
     "request": "^2.86.0",
     "request-promise-native": "^1.0.5",
-    "run-sequence": "^2.2.1",
     "rxjs": "^6.2.1",
-    "write": "^1.0.3",
-    "write-json": "^3.0.1"
+    "touch": "^3.1.0",
+    "write": "^1.0.3"
   },
   "devDependencies": {
     "standard": "^11.0.1",

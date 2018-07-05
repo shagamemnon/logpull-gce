@@ -4,3 +4,7 @@ node_modules/**
 package-lock.json
 .env
 TODO.md
+credentials.json
+config.json
+output/**
+GCS-To-Big-Query/**

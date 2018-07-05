@@ -1,34 +1,35 @@
 'use strict'
 
 const moment = require('moment')
-const setup = require('./setup')
-const express = require('express')
-require('express-async-errors')
-const app = express()
-const async = require('neo-async')
 const request = require('request')
 const storage = require('@google-cloud/storage')()
+const express = require('express')
+const config = require('./config.json')
+const credentials = require('./credentials.json')
+require('express-async-errors')
+const app = express()
 
 class PollingEngine {
   constructor () {
-    this.bucketName = storage.bucket(setup.bucket)
-    this.setup = setup
-    this.zones = this.setup.zones
-    this.schema = this.setup.schema
-    this.start = moment().startOf('minute').subtract(setup.logpullStart, 'minutes').toISOString()
-    this.end = moment().startOf('minute').subtract(setup.logpullEnd, 'minutes').toISOString()
+    this.config = config
+    this.bucketName = storage.bucket(this.config.BUCKET_NAME)
+    this.fields = this.config.FIELDS.slice(0, -1)
+    this.zones = this.config.ZONES
+    this.headers = credentials
+    this.start = moment().startOf('minute').subtract(config.LOGPULL_START_TIME, 'minutes').toISOString()
+    this.end = moment().startOf('minute').subtract(config.LOGPULL_END_TIME, 'minutes').toISOString()
   }
 
   pollEvents () {
     console.log(`Polled ELS on:`)
     this.zones.forEach(z => {
       this.file = this.bucketName.file(`${this.start}-${z}.json`)
-      const endpoint = `https://api.cloudflare.com/client/v4/zones/${z}/logs/received?start=${this.start}&end=${this.end}&fields=${this.schema}`
+      const endpoint = `https://api.cloudflare.com/client/v4/zones/${z}/logs/received?start=${this.start}&end=${this.end}&fields=${this.fields}`
       const stream = this.file.createWriteStream()
       request
         .get({
           url: endpoint,
-          headers: this.setup.headers
+          headers: this.headers
         })
         .on('error', err => {
           console.log(err)
@@ -78,20 +79,12 @@ exports.pollELS = (req, res) => {
   switch (req.method) {
     case 'GET':
       handleGET(req, res)
-      break;
+      break
     case 'PUT':
       handlePUT(req, res)
-      break;
+      break
     default:
       res.status(500).send({ error: 'Something blew up!' })
-      break;
+      break
   }
 }
-
-// exports.jsonLoad = function jsonLoad(event) {
-
-// }
-
-// exports.pollELS
-app.listen(process.env.PORT || 3000)
-console.log('\nϟϟϟ Cloudflare server initialized ϟϟϟ\n')
