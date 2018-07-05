@@ -7,9 +7,9 @@ const fs = require('fs')
 const config = require('./config.json')
 const opn = require('opn')
 const { auth } = require('google-auth-library')
-const writeFile = require('write')
+const writeJson = require('write')
 var gutil = require('gulp-util')
-const request = require('got')
+const request = require('request')
 
 // var prompts = new Rx.Subject()
 // use gulp-run to start a pipeline
@@ -21,50 +21,44 @@ const client = auth.getClient({
 const ui = new inquirer.ui.BottomBar()
 
 const createConfigJSON = () => {
+  let credentials
+
   var billingPrompt = {
     type: 'list',
     name: 'billing',
     message: 'Is billing enabled for this project?',
-    choices: ['Yes', 'No'],
-    context: 0
+    choices: ['Yes', 'No']
   }
 
   const billingEnabled = {
     type: 'list',
     name: 'apiKeyPrePrompt',
-    prefix: '> ',
-    message: '\nPress enter to open https://dash.cloudflare.com/profile and get your Cloudflare API Key',
-    choices: ['Get API Key from the Cloudflare dashboard'],
-    context: 0
+    prefix: '',
+    message: `Next, you'll need your Cloudflare API key.`,
+    choices: ['Get my API key from dash.cloudflare.com', 'I have my API key accessible']
   }
 
-  const cloudflareDashboardPrompt = {
+  const cloudflareApiKeyPrompt = {
     type: 'input',
     name: 'cfApiKey',
-    prefix: '?',
-    message: '\nEnter your Cloudflare API key: https://dash.cloudflare.com/profile',
-    context: 0
+    message: '\nEnter your Cloudflare API key:'
   }
 
   const cloudflareEmailPrompt = {
     type: 'input',
     name: 'cfEmail',
-    prefix: '?',
-    message: '\nEnter your Cloudflare account email:',
-    context: 0
+    prefix: '',
+    message: 'Enter your Cloudflare account email:'
   }
 
   const cloudflareZonesPrompt = {
     type: 'input',
     name: 'cfZones',
     prefix: '>',
-    message: `\nEnter each top-level domain you'd like to monitor logs for:`,
-    context: 0
+    message: `\nEnter each top-level domain you'd like to monitor logs for:`
   }
 
   let projectId
-
-  let credentials
 
   function main () {
     auth.getDefaultProjectId().then(proj => {
@@ -75,24 +69,28 @@ const createConfigJSON = () => {
 
   function enterTollRoad (projectId) {
     return inquirer.prompt(billingPrompt).then(answers => {
-      answers.billing === 'Yes' ? addCloudflareCredentials(projectId)
-        : goToBilling(projectId)
+      answers.billing === 'Yes' ? addBillingStatus(projectId, 'done')
+        : addBillingStatus(projectId, 'incomplete')
     })
   }
 
-  function goToBilling (projectId) {
-    opn(`https://console.developers.google.com/project/${projectId}/settings`)
+  function addBillingStatus (projectId, status) {
+    if (status === 'incomplete') opn(`https://console.developers.google.com/project/${projectId}/settings`)
     setTimeout(function () {
       return inquirer.prompt(billingEnabled).then(answers => {
-        answers.apiKeyPrePrompt === 'Get API Key from the Cloudflare Dashboard' ? goToCloudflareDashboard() : enterTollRoad()
+        answers.apiKeyPrePrompt === 'Get my API key from dash.cloudflare.com' ? addCloudflareCredentials('redirect')
+          : addCloudflareCredentials()
       })
-    }, 2000)
+    }, 1000)
   }
 
-  function goToCloudflareDashboard () {
-    opn(`https://dash.cloudflare.com/profile`)
+  function addCloudflareCredentials (routeTo) {
+    if (routeTo === 'redirect') {
+      console.log('Opening Cloudflare dashboard ...')
+      opn(`https://dash.cloudflare.com/profile`)
+    }
     setTimeout(function () {
-      return inquirer.prompt([cloudflareDashboardPrompt, cloudflareEmailPrompt]).then(answers => {
+      return inquirer.prompt([cloudflareApiKeyPrompt, cloudflareEmailPrompt]).then(answers => {
         credentials = {
           API_KEY: `${answers['cfApiKey']}`,
           EMAIL: `${answers['cfEmail']}`,
@@ -101,48 +99,63 @@ const createConfigJSON = () => {
           BUCKET_NAME: 'cloudflare-els-storage',
           FUNCTION_NAME: 'cloudflare-els-gcs',
           FUNCTION_BUCKET_NAME: 'cloudflare-els-cloud-functions',
-          GCLOUD_PROJECT_ID: projectId
+          GCLOUD_PROJECT_ID: projectId,
+          ZONE_NAMES: [],
+          ZONES: [],
+          SCHEMA: []
         }
+        return createCredentialsFile(credentials)
       })
-    }, 2000)
+    }, 1000)
   }
 
-  function enterCloudflareCredentials () {
-    opn(`https://dash.cloudflare.com/profile`)
-    setTimeout(function () {
-      return inquirer.prompt(cloudflareDashboardPrompt).then(answers => {
-        answers.apiKeyPrePrompt === 'Get my API Key' ? goToCloudflareDashboard() : enterTollRoad()
+  let configureZones = {
+    _zones: [],
+    _zoneNames: [],
+    setZones (hdrs) {
+      request({
+        uri: `https://api.cloudflare.com/client/v4/zones`,
+        headers: hdrs,
+        json: true
+      }).then(json => {
+        for (let i = 0; i < json.result.length; i++) {
+          this._zones.push(json.result[i].id)
+          this._zoneNames.push(json.result[i].name)
+          console.log(this._zones, this._zoneNames)
+          if (i >= json.result.length) {
+            return [this._zones, this._zoneNames]
+          }
+        }
+      }).then(vals => {
+        return Promise.resolve([this._zones, this._zoneNames])
       })
-    }, 2000)
+    }
   }
 
-  function addCloudflareCredentials () {
-    return inquirer.prompt([
-
-    ]).then(answers => {
-      try {
-        const hdrs = {
-          'X-Auth-Key': `${answers['cfApiKey']}`,
-          'X-Auth-Email': `${answers['cfEmail']}`,
-          'Content-Type': 'application/json'
-        }
-        console.log(hdrs)
-        request.stream('https://api.cloudflare.com/client/v4/zones', { headers: hdrs })
-          .on('response', res => {
-            console.log(res.status)
-          })
-        config.start(hdrs).then(success => {
-          writeFile('config.json', credentials, JSON.stringify(credentials, null, 2))
-            .then(function () {
-              console.log(credentials)
-              console.log('Success. To start deployment run:\nnpm run initialize')
-            })
-        }).then(success => {
-        })
-      } catch (e) {
-        if (e) console.log('Cloudflare credentials invalid, please re-enter gulp cloudflare.start')
+  function createCredentialsFile (credentials) {
+    try {
+      const schema = require('./setup')
+      console.log(credentials)
+      const hdrs = {
+        'X-Auth-Key': credentials.API_KEY,
+        'X-Auth-Email': credentials.EMAIL
+        // 'Content-Type': 'application/json'
       }
-    })
+      console.log(hdrs)
+      return configureZones.setZones(hdrs).then(async zoneConfig => {
+        credentials.ZONES = zoneConfig[0]
+        credentials.ZONE_NAMES = zoneConfig[1]
+        credentials.SCHEMA = await schema
+        return credentials
+      }).then(credentials => {
+        return writeJson.sync('config.json', credentials)
+      })
+    } catch (e) {
+      if (e) {
+        console.log('Cloudflare credentials invalid.')
+        addCloudflareCredentials()
+      }
+    }
   }
   main()
 }
