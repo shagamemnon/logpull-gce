@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon ./index.js localhost 3000",
-    "flare": "gulp createBuckets && gulp configure --silent",
+    "flare": "gulp configure --silent",
     "enableapis": "gcloud services enable cloudfunctions.googleapis.com",
     "deploy": "gulp deploy"
   },
